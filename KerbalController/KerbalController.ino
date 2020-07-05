@@ -17,6 +17,7 @@ const int pRB = 4;          //rotation joystick button
 const int latchPin = 8;     //ST_CP - green
 const int dataPin = 11;     //DS - yellow
 const int clockPin = 12;    //SH_CP - blue
+const int testLEDPin = 13;    //SH_CP - blue
 const int pMODE = 22;       //mode switch (used for debug mode)
 const int pLCDx = 27;       //toggle switch x (used for LCD display modes)
 const int pLCDy = 24;       //toggle switch y (used for LCD display modes)

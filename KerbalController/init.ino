@@ -42,9 +42,14 @@ void controlsInit() {
   pinMode(latchPin, OUTPUT);
   pinMode(clockPin, OUTPUT);
   pinMode(dataPin, OUTPUT);
+  pinMode(testLEDPin, OUTPUT);
+
 }
 
 void testLEDS(int testdelay){
+  digitalWrite(testLEDPin,HIGH);
+  delay(testdelay);
+  digitalWrite(testLEDPin,LOW);
   digitalWrite(pSTAGELED,HIGH);
   delay(testdelay);
   digitalWrite(pSTAGELED,LOW);

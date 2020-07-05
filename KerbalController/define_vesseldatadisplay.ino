@@ -15,6 +15,7 @@ int get_vessel_data() {
       clearLCD();
       writeLCD("KerbalController");
       writeLCD("handshake...");
+      digitalWrite(testLEDPin,HIGH);
       break;
     case 1:
       //subsequent packets are data from the plugin
@@ -33,6 +34,8 @@ int get_vessel_data() {
       clearLCD();
       writeLCD("KerbalController");
       writeLCD("idle...");
+      digitalWrite(testLEDPin,LOW);
+
     }    
   }
   return returnValue;
