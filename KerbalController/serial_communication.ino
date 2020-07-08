@@ -49,6 +49,10 @@ boolean KSPBoardReceiveData() {
         structSize = sizeof(VData);   
         address = (uint16_t*)&VData;     
         break;
+      case 2:
+        structSize = sizeof(AckPacket);   
+        address = (uint16_t*)&APacket;     
+        break;
       }
     }
 

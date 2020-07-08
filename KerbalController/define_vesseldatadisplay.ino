@@ -15,7 +15,6 @@ int get_vessel_data() {
       clearLCD();
       writeLCD("KerbalController");
       writeLCD("handshake...");
-      digitalWrite(testLEDPin,HIGH);
       break;
     case 1:
       //subsequent packets are data from the plugin
@@ -34,8 +33,6 @@ int get_vessel_data() {
       clearLCD();
       writeLCD("KerbalController");
       writeLCD("idle...");
-      digitalWrite(testLEDPin,LOW);
-
     }    
   }
   return returnValue;
@@ -46,6 +43,7 @@ struct VesselData
 {
     //the following data is available in the packet received from the plugin (defined by the KSPSerialIO plugin)
     byte id;                //1   packet id
+    byte ackseq;
     float AP;               //2   apoapsis (m to sea level)
     float PE;               //3   periapsis (m to sea level)
     float SemiMajorAxis;    //4   orbit semi major axis (m)
@@ -330,7 +328,8 @@ void define_vessel_data_display() {
     clearLCD();
     writeLCD("KerbalController");
   }
-  
+
+  ackseq = VData.ackseq;
   //get in-game status for updating the LED statuses on the controller  
   lights_on = ControlStatus(AGLight);
   gears_on = ControlStatus(AGGears);

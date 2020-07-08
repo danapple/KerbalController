@@ -10,10 +10,19 @@ void send_control_packet() {
   }
 }
 
+struct AckPacket
+{
+  byte id;
+  byte ack;
+};
+
+AckPacket APacket;
+
 //define the structure of a control packet
 struct ControlPacket {
   //the following controls can be sent to the KSPSerialIO plugin (defined by the plugin)
   byte id;
+  byte seq;
   byte MainControls;                  //SAS RCS Lights Gears Brakes Precision Abort Stage (see enum)
   byte Mode;                          //0 = stage, 1 = docking, 2 = map
   unsigned int ControlGroup;          //action groups 1-10
@@ -46,12 +55,14 @@ ControlPacket CPacket;
 #define ABORT     1
 #define STAGE     0
 
+bool sendCommand = false;
 //Main controls uses enum above, e.g. MainControls(SAS,true);
 void MainControls(byte n, boolean s) {
-  if (s)
-    CPacket.MainControls |= (1 << n);       // forces nth bit of x to be 1.  all other bits left alone.
-  else
-    CPacket.MainControls &= ~(1 << n);      // forces nth bit of x to be 0.  all other bits left alone.
+  sendCommand = true;
+    if (s)
+      CPacket.MainControls |= (1 << n);       // forces nth bit of x to be 1.  all other bits left alone.
+    else
+      CPacket.MainControls &= ~(1 << n);      // forces nth bit of x to be 0.  all other bits left alone.
 }
 
 //Control groups (action groups) uses an integer to refer to a custom action group, e.g. ControlGroup(5,true);
@@ -93,11 +104,30 @@ void setNavballMode(byte m) {
   CPacket.NavballSASMode += m << 4;
 }
 
+int PIN_STATE[60];
+
+void initPinStates()
+{
+  for (int pin = 0; pin < 54; pin++) {
+    PIN_STATE[pin] = !digitalRead(pin);
+  }
+}
+
+boolean positiveEdge(int pin) 
+{
+  boolean oldPinState = PIN_STATE[pin];
+  boolean newPinState = !digitalRead(pin);
+  PIN_STATE[pin] = newPinState;
+  return oldPinState == false && newPinState == true;
+}
 
 void define_control_packet() {
   if (Connected) {
+    sendCommand = false;
     //here we define what controls to send when which pins are manipulated
+     if (positiveEdge(pGEARS)) { MainControls(GEARS, !gears_on); }
     
+ if (false) {
     //toggle switches
     if(!digitalRead(pSAS)){MainControls(SAS, true);} else {MainControls(SAS, false);}
     if(!digitalRead(pRCS)){MainControls(RCS, true);} else {MainControls(RCS, false);}
@@ -105,6 +135,7 @@ void define_control_packet() {
   
     //momentary stage button
     if(!digitalRead(pSTAGE) && digitalRead(pARM)){MainControls(STAGE, true);} else {MainControls(STAGE, false);}
+    
     if(digitalRead(pARM)){
       now = millis();
       stageLedTime = now - stageLedTimeOld;
@@ -115,18 +146,19 @@ void define_control_packet() {
     }
     else {stage_led_on = false;}
     digitalWrite(pSTAGELED, stage_led_on);
-    
+
+   
     //toggle buttons
-    if(!digitalRead(pLIGHTS)){MainControls(LIGHTS, !lights_on);}
-    if(!digitalRead(pGEARS)){MainControls(GEARS, !gears_on);}
-    if(!digitalRead(pBRAKES)){MainControls(BRAKES, !brakes_on);}
-    if(!digitalRead(pACTION1)){ControlGroups(1, !action1_on);}
-    if(!digitalRead(pACTION2)){ControlGroups(2, !action2_on);}
-    if(!digitalRead(pACTION3)){ControlGroups(3, !action3_on);}
-    if(!digitalRead(pACTION4)){ControlGroups(4, !action4_on);}
-    if(!digitalRead(pLADDER)){ControlGroups(5, !ladder_on);}
-    if(!digitalRead(pSOLAR)){ControlGroups(6, !solar_on);}
-    if(!digitalRead(pCHUTES)){ControlGroups(7, !chutes_on);}
+    if(positiveEdge(pLIGHTS)){MainControls(LIGHTS, !lights_on);}
+    if(positiveEdge(pGEARS)){MainControls(GEARS, !gears_on);}
+    if(positiveEdge(pBRAKES)){MainControls(BRAKES, !brakes_on);}
+    if(positiveEdge(pACTION1)){ControlGroups(1, !action1_on);}
+    if(positiveEdge(pACTION2)){ControlGroups(2, !action2_on);}
+    if(positiveEdge(pACTION3)){ControlGroups(3, !action3_on);}
+    if(positiveEdge(pACTION4)){ControlGroups(4, !action4_on);}
+    if(positiveEdge(pLADDER)){ControlGroups(5, !ladder_on);}
+    if(positiveEdge(pSOLAR)){ControlGroups(6, !solar_on);}
+    if(positiveEdge(pCHUTES)){ControlGroups(7, !chutes_on);}
 
     //throttle
     CPacket.Throttle = constrain(map(analogRead(pTHROTTLE),30,990,0,1023),0,1000);
@@ -172,6 +204,7 @@ void define_control_packet() {
       CPacket.TY = 0;
       CPacket.TZ = 0;
     }
+ }
 
     //    //translation joystick button toggles between modes?
     //    if(!digitalRead(pTB) && !tb_prev){tb_on = !tb_on; tb_prev = true;}
@@ -182,9 +215,18 @@ void define_control_packet() {
     //    else {
     //      
     //    }
+    if (sendCommand) {
+      CPacket.seq = (CPacket.seq + 1) % 200;
+    }
 
-    //send the control packet to the KSPSerialIO plugin
-    KSPBoardSendData(details(CPacket)); 
+    if (CPacket.seq != ackseq) 
+    {
+      digitalWrite(pendingPacketLEDPin,HIGH);
+      KSPBoardSendData(details(CPacket)); 
+    }
+    else {
+      digitalWrite(pendingPacketLEDPin,LOW);
+    }
+
   }
 }
-

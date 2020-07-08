@@ -3,12 +3,14 @@ SoftwareSerial mySerial(15,14); //pin 14 connected to LCD, 15 unconnected
 
 //analog pins
 const int pTHROTTLE = A0; //slide pot
-const int pTX = A1;       //translation x-axis
-const int pTY = A2;       //translation y-axis
-const int pTZ = A3;       //translation z-axis
-const int pRX = A4;       //rotation x-axis
-const int pRY = A5;       //rotation y-axis
-const int pRZ = A6;       //rotation z-axis
+const int pTHROTTLE1 = A1; //slide pot
+
+const int pTX = A2;       //translation x-axis
+const int pTY = A3;       //translation y-axis
+const int pTZ = A4;       //translation z-axis
+const int pRX = A5;       //rotation x-axis
+const int pRY = A6;       //rotation y-axis
+const int pRZ = A7;       //rotation z-axis
 
 //digital pins
 const int pPOWER = 2;       //power switch
@@ -17,7 +19,7 @@ const int pRB = 4;          //rotation joystick button
 const int latchPin = 8;     //ST_CP - green
 const int dataPin = 11;     //DS - yellow
 const int clockPin = 12;    //SH_CP - blue
-const int testLEDPin = 13;    //SH_CP - blue
+const int pendingPacketLEDPin = 13;    //SH_CP - blue
 const int pMODE = 22;       //mode switch (used for debug mode)
 const int pLCDx = 27;       //toggle switch x (used for LCD display modes)
 const int pLCDy = 24;       //toggle switch y (used for LCD display modes)
@@ -61,6 +63,8 @@ bool action1_on = false;
 bool action2_on = false;
 bool action3_on = false;
 bool action4_on = false;
+
+byte ackseq = 0;
 
 //toggle button states
 bool tb_on = true;
@@ -119,6 +123,7 @@ void setup() {
   controlsInit();   //set all pin modes
   testLEDS(50);     //blink every LED once to test (with a delay of 10 ms)
   InitTxPackets();  //initialize the serial communication
+  initPinStates();
 }
 
 void loop() {
@@ -126,8 +131,19 @@ void loop() {
   //check mode
   if(!digitalRead(pMODE)){debug = true;} else {debug = false;}
 
-  if(debug){
-    //Debug mode does not communicate with KSPSerialIO, but simply displays the button states on the LCD.
+  if(debug && false)
+  {
+    debug_mode();
+  }
+  else 
+  {
+    get_vessel_data();
+    send_control_packet();
+  }
+}
+
+void debug_mode() {
+  //Debug mode does not communicate with KSPSerialIO, but simply displays the button states on the LCD.
     //Select analog input using LCDx/y/z. Xyz = Throttle. xYz = Translation. xyZ = Rotation.
 
     //previous state tracking only used in debug
@@ -260,13 +276,4 @@ void loop() {
       writeLCD(rz_char);
     }
     //end of debug mode
-  }
-  else {
-    
-    //KSP mode
-
-    //send and receive data
-    get_vessel_data();
-    send_control_packet();
-  }
 }
