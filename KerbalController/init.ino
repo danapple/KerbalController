@@ -16,7 +16,7 @@ void controlsInit() {
   pinMode(pSAS, INPUT_PULLUP);
   pinMode(pRCS, INPUT_PULLUP);
   pinMode(pABORT, INPUT);
-  pinMode(pARM, INPUT);
+  pinMode(pARM, INPUT_PULLUP);
   pinMode(pSTAGE, INPUT_PULLUP);
   pinMode(pSTAGELED, OUTPUT);
   pinMode(pLIGHTS, INPUT_PULLUP);
@@ -29,6 +29,8 @@ void controlsInit() {
   pinMode(pCHUTESLED, OUTPUT);
   pinMode(pGEARS, INPUT_PULLUP);
   pinMode(pGEARSLED, OUTPUT);
+  pinMode(pGEARDOWNDISAGREE, OUTPUT);
+  pinMode(pGEARUPDISAGREE, OUTPUT);
   pinMode(pBRAKES, INPUT_PULLUP);
   pinMode(pBRAKESLED, OUTPUT);
   pinMode(pACTION1, INPUT_PULLUP);

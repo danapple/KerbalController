@@ -26,6 +26,7 @@ void Handshake(){
 void InitTxPackets() {
   HPacket.id = 0;  
   CPacket.id = 101;
+  CPacket.seq = 0;
 }
 
 //This shit contains stuff borrowed from EasyTransfer lib
@@ -48,10 +49,6 @@ boolean KSPBoardReceiveData() {
       case 1:
         structSize = sizeof(VData);   
         address = (uint16_t*)&VData;     
-        break;
-      case 2:
-        structSize = sizeof(AckPacket);   
-        address = (uint16_t*)&APacket;     
         break;
       }
     }

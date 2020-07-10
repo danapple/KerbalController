@@ -3,29 +3,30 @@ SoftwareSerial mySerial(15,14); //pin 14 connected to LCD, 15 unconnected
 
 //analog pins
 const int pTHROTTLE = A0; //slide pot
-const int pTHROTTLE1 = A1; //slide pot
-
-const int pTX = A2;       //translation x-axis
-const int pTY = A3;       //translation y-axis
-const int pTZ = A4;       //translation z-axis
-const int pRX = A5;       //rotation x-axis
-const int pRY = A6;       //rotation y-axis
-const int pRZ = A7;       //rotation z-axis
+const int pTX = A1;       //translation x-axis
+const int pTY = A2;       //translation y-axis
+const int pTZ = A3;       //translation z-axis
+const int pRX = A4;       //rotation x-axis
+const int pRY = A5;       //rotation y-axis
+const int pRZ = A6;       //rotation z-axis
+const int pTHROTTLE1 = A7; //slide pot   // Not used in KSP.  Reserved for X-Plane
 
 //digital pins
 const int pPOWER = 2;       //power switch
 const int pTB = 3;          //translation joystick button
 const int pRB = 4;          //rotation joystick button
 const int latchPin = 8;     //ST_CP - green
+const int pGEARDOWNDISAGREE = 9;  // Landing gear is commanded down but is actually not down
+const int pGEARUPDISAGREE = 10;   // Landing gear is commanded up but is actually not up
 const int dataPin = 11;     //DS - yellow
 const int clockPin = 12;    //SH_CP - blue
-const int pendingPacketLEDPin = 13;    //SH_CP - blue
+const int pendingPacketLEDPin = 13;    // We have an unacknowledged command packet to send
 const int pMODE = 22;       //mode switch (used for debug mode)
 const int pLCDx = 27;       //toggle switch x (used for LCD display modes)
 const int pLCDy = 24;       //toggle switch y (used for LCD display modes)
 const int pLCDz = 29;       //toggle switch z (used for LCD display modes)
-const int pSAS = 26;        //SAS switch
-const int pRCS = 31;        //RCS switch
+const int pSAS = 26;        //SAS button
+const int pRCS = 31;        //RCS button
 const int pABORT = 28;      //Abort switch (safety switch, active high)
 const int pARM = 30;        //Arm switch (safety switch, active high)
 const int pSTAGE = 32;      //Stage button
@@ -38,8 +39,8 @@ const int pSOLAR = 38;      //Solar button (action group 6)
 const int pSOLARLED = 39;   //Solar button LED
 const int pCHUTES = 40;     //Chutes button (action group 7)
 const int pCHUTESLED = 41;  //Chutes button LED
-const int pGEARS = 42;      //Gears button
-const int pGEARSLED = 43;   //Gears button LED
+const int pGEARS = 42;      // Landing gear switch
+const int pGEARSLED = 43;   // Landing gear down & locked LED
 const int pBRAKES = 44;     //Brakes button
 const int pBRAKESLED = 45;  //Brakes button LED
 const int pACTION1 = 46;    //Action Group 1 button
@@ -63,6 +64,8 @@ bool action1_on = false;
 bool action2_on = false;
 bool action3_on = false;
 bool action4_on = false;
+bool rcs_on = false;
+bool sas_on = false;
 
 byte ackseq = 0;
 
@@ -96,7 +99,7 @@ bool debug = false;
 //timing
 const int IDLETIMER = 20000;        //if no message received from KSP for more than 20s, go idle (default 2000)
 const int CONTROLREFRESH = 10;      //send control packet every 10 ms (default 25)
-const int stageLedBlinkTime = 500;  //blink staging LED when armed every 500 ms
+const int stageLedBlinkTime = 1000;  //blink staging LED when armed every 500 ms
 
 //variables used in timing
 unsigned long deadtime, deadtimeOld, controlTime, controlTimeOld, stageLedTime, stageLedTimeOld;
@@ -124,6 +127,7 @@ void setup() {
   testLEDS(50);     //blink every LED once to test (with a delay of 10 ms)
   InitTxPackets();  //initialize the serial communication
   initPinStates();
+
 }
 
 void loop() {
