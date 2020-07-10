@@ -1,0 +1,4 @@
+#define GEAR_IS_SWITCH 1
+#define HAVE_JOYSTICKS 0
+#define HAVE_LCD 0
+#define HAVE_THROTTLE 0
