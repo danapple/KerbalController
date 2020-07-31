@@ -62,7 +62,7 @@ ControlPacket CPacket;
 
 boolean sendCommand = false;
 boolean fixStates = false;
-boolean lastStateFix = 0;
+unsigned long lastStateFix = 0;
 //Main controls uses enum above, e.g. MainControls(SAS,true);
 
 //Enumeration of SAS Modes
@@ -197,22 +197,18 @@ void triggerMainState(int readPin, int writePin, boolean state, boolean fix)
   boolean pinState = readPinState(readPin);
   if (!state && positiveEdge(readPin)) 
   {
-    recordPin(readPin, true);
     MainControls(writePin, true);
   }
   else if (state && negativeEdge(readPin)) 
   {
-    recordPin(readPin, false);
     MainControls(writePin, false);
   }
   else if (fix && fixStates && state != pinState)
   {
-    recordPin(readPin, false);
     MainControls(writePin, pinState);
   }
-  else {
-    recordPin(readPin, pinState);
-  }
+  recordPin(readPin, pinState);
+  
 }
 
 boolean matchControlState(int readPin, int writePin, boolean state) 
@@ -253,7 +249,11 @@ void define_control_packet() {
   unsigned long now = millis();
   if (Connected)
   {
-    fixStates = now - lastStateFix > 500;
+    if (lastStateFix == 0)
+    {
+      lastStateFix = now;
+    }
+    fixStates = (now - lastStateFix)  > 500;
     if (fixStates) 
     {
       lastStateFix = now;
@@ -358,6 +358,7 @@ void define_control_packet() {
  
     if (sendCommand) {
       sentRequest = 0;
+      lastStateFix = now;
       CPacket.seq = (CPacket.seq + 1) % 200;
     }
 
