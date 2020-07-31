@@ -1,3 +1,21 @@
+void initLCD()
+{
+  if (HAVE_LCD == 0)
+  {
+    return;
+  }
+  mySerial.begin(9600); //LCD connection
+  delay(500);           //wait for LCD boot
+  
+  //write to LCD
+  clearLCD();
+  writeLCD("KerbalController");
+  jumpToLineTwo();
+  writeLCD("booting...");
+  delay(100);
+
+}
+
 void clearLCD ()
 {
   if (HAVE_LCD == 0) 

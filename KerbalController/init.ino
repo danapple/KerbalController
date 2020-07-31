@@ -15,10 +15,12 @@ void controlsInit() {
   pinMode(pLCDz, INPUT_PULLUP);
   pinMode(pSAS, INPUT_PULLUP);
   pinMode(pRCS, INPUT_PULLUP);
+  pinMode(pABORTARM, INPUT_PULLUP);
   pinMode(pABORT, INPUT);
   pinMode(pARM, INPUT_PULLUP);
   pinMode(pSTAGE, INPUT_PULLUP);
   pinMode(pSTAGELED, OUTPUT);
+  pinMode(pABORTLED, OUTPUT);
   pinMode(pLIGHTS, INPUT_PULLUP);
   pinMode(pLIGHTSLED, OUTPUT);
   pinMode(pLADDER, INPUT_PULLUP);
@@ -48,87 +50,76 @@ void controlsInit() {
 
 }
 
-void testLEDS(int testdelay){
-  digitalWrite(pendingPacketLEDPin,HIGH);
-  delay(testdelay);
-  digitalWrite(pendingPacketLEDPin,LOW);
-  digitalWrite(pSTAGELED,HIGH);
-  delay(testdelay);
-  digitalWrite(pSTAGELED,LOW);
-  digitalWrite(pLIGHTSLED,HIGH);
-  delay(testdelay);
-  digitalWrite(pLIGHTSLED,LOW);
-  digitalWrite(pLADDERLED,HIGH);
-  delay(testdelay);
-  digitalWrite(pLADDERLED,LOW);
-  digitalWrite(pSOLARLED,HIGH);
-  delay(testdelay);
-  digitalWrite(pSOLARLED,LOW);
-  digitalWrite(pCHUTESLED,HIGH);
-  delay(testdelay);
-  digitalWrite(pCHUTESLED,LOW);
-  digitalWrite(pGEARSLED,HIGH);
-  delay(testdelay);
-  digitalWrite(pGEARSLED,LOW);
-  digitalWrite(pBRAKESLED,HIGH);
-  delay(testdelay);
-  digitalWrite(pBRAKESLED,LOW);
-  digitalWrite(pACTION1LED,HIGH);
-  delay(testdelay);
-  digitalWrite(pACTION1LED,LOW);
-  digitalWrite(pACTION2LED,HIGH);
-  delay(testdelay);
-  digitalWrite(pACTION2LED,LOW);
-  digitalWrite(pACTION3LED,HIGH);
-  delay(testdelay);
-  digitalWrite(pACTION3LED,LOW);
-  digitalWrite(pACTION4LED,HIGH);
-  delay(testdelay);
-  digitalWrite(pACTION4LED,LOW);
-  
-  //prepare the shift register
-  digitalWrite(dataPin, LOW);
-  digitalWrite(clockPin, LOW);
-  digitalWrite(latchPin, LOW);
+void testLED(int pin, int testDelay)
+{
+  digitalWrite(pin, HIGH);
+  delay(testDelay);
+  digitalWrite(pin, LOW);
+}
 
-  inputBytes[0] = B11111111;
-  inputBytes[1] = B11111111;
-  inputBytes[2] = B11111111;
-  inputBytes[3] = B11111111;
-  inputBytes[4] = B11111111;
-  inputBytes[5] = B11111111;
-  inputBytes[6] = B11111111;
-  //loop through the input bytes
-  for (int j=0; j<=6; j++){
-    byte inputByte = inputBytes[j];
-    Serial.println(inputByte);
-    shiftOut(dataPin, clockPin, MSBFIRST, inputByte);
-  }
-  
-  //latch the values in when done shifting
-  digitalWrite(latchPin, HIGH); 
-  
-  delay(testdelay);
-  
-  //prepare the shift register
-  digitalWrite(dataPin, LOW);
-  digitalWrite(clockPin, LOW);
-  digitalWrite(latchPin, LOW);
+void testLEDS(int testDelay){
+  testLED(pendingPacketLEDPin, testDelay);
+  testLED(pABORTLED, testDelay);
+  testLED(pSTAGELED, testDelay);
+  testLED(pLIGHTSLED, testDelay);
+  testLED(pLADDERLED, testDelay);
+  testLED(pSOLARLED, testDelay);
+  testLED(pCHUTESLED, testDelay);
+  testLED(pGEARSLED, testDelay);
+  testLED(pBRAKESLED, testDelay);
+  testLED(pACTION1LED, testDelay);
+  testLED(pACTION2LED, testDelay);
+  testLED(pACTION3LED, testDelay);
+  testLED(pACTION4LED, testDelay);
+  testLED(pGEARDOWNDISAGREE, testDelay);
+  testLED(pGEARUPDISAGREE, testDelay);
 
-  inputBytes[0] = B00000000;
-  inputBytes[1] = B00000000;
-  inputBytes[2] = B00000000;
-  inputBytes[3] = B00000000;
-  inputBytes[4] = B00000000;
-  inputBytes[5] = B00000000;
-  inputBytes[6] = B00000000;
-  //loop through the input bytes
-  for (int j=0; j<=6; j++){
-    byte inputByte = inputBytes[j];
-    Serial.println(inputByte);
-    shiftOut(dataPin, clockPin, MSBFIRST, inputByte);
-  }
+  if (HAVE_BARS)
+  {
+    //prepare the shift register
+    digitalWrite(dataPin, LOW);
+    digitalWrite(clockPin, LOW);
+    digitalWrite(latchPin, LOW);
   
-  //latch the values in when done shifting
-  digitalWrite(latchPin, HIGH); 
+    inputBytes[0] = B11111111;
+    inputBytes[1] = B11111111;
+    inputBytes[2] = B11111111;
+    inputBytes[3] = B11111111;
+    inputBytes[4] = B11111111;
+    inputBytes[5] = B11111111;
+    inputBytes[6] = B11111111;
+    //loop through the input bytes
+    for (int j=0; j<=6; j++){
+      byte inputByte = inputBytes[j];
+      //Serial.println(inputByte);
+      shiftOut(dataPin, clockPin, MSBFIRST, inputByte);
+    }
+    
+    //latch the values in when done shifting
+    digitalWrite(latchPin, HIGH); 
+    
+    delay(testDelay);
+    
+    //prepare the shift register
+    digitalWrite(dataPin, LOW);
+    digitalWrite(clockPin, LOW);
+    digitalWrite(latchPin, LOW);
+  
+    inputBytes[0] = B00000000;
+    inputBytes[1] = B00000000;
+    inputBytes[2] = B00000000;
+    inputBytes[3] = B00000000;
+    inputBytes[4] = B00000000;
+    inputBytes[5] = B00000000;
+    inputBytes[6] = B00000000;
+    //loop through the input bytes
+    for (int j=0; j<=6; j++){
+      byte inputByte = inputBytes[j];
+      //Serial.println(inputByte);
+      shiftOut(dataPin, clockPin, MSBFIRST, inputByte);
+    }
+    
+    //latch the values in when done shifting
+    digitalWrite(latchPin, HIGH); 
+  }
 }

@@ -1,41 +1,61 @@
-//grab info from KSP here (VData object) and write out results to the Arduino pins
+//grab info from KSP herackace (VData object) and write out results to the Arduino pins
 
+long lastLOSChange = 0;
 //connect to the KSPSerialIO plugin and receive data
-int get_vessel_data() {
-  int returnValue = -1;
-  now = millis();
+void get_vessel_data() {
+  unsigned long now = millis();
+  int returnValue = KSPBoardReceiveData();
 
-  if (KSPBoardReceiveData()){
+  if (returnValue > -1) {
     //data is being received
     deadtimeOld = now;
-    returnValue = id;
-    switch(id) {
-    case 0: //First packet is a handshake packet
-      Handshake();
-      clearLCD();
-      writeLCD("KerbalController");
-      writeLCD("handshake...");
-      break;
-    case 1:
-      //subsequent packets are data from the plugin
-      define_vessel_data_display(); //define what to do with the data below
-      break;
+    switch(returnValue) {
+      case HSPid:
+        clearLCD();
+        //writeLCD("KerbalController");
+        //writeLCD("handshake...");
+        Handshake();
+        Connected = true;
+        break;
+      case VDid:
+        define_vessel_data_display();
+        Connected = true;
+        receivedData = true;
+        break;
+      default:
+        //Connected = false;
+        break;
     }
-    Connected = true;
   }
   else
   { //if no message received for a while, go idle
     deadtime = now - deadtimeOld; 
     if (deadtime > IDLETIMER)
     {
+      if (Connected)
+      {
+        testLEDS(20);
+      }
       deadtimeOld = now;
       Connected = false;
-      clearLCD();
-      writeLCD("KerbalController");
-      writeLCD("idle...");
+      receivedData = false;
+      //clearLCD();
+      //writeLCD("KerbalController");
+      //writeLCD("idle...");
     }    
   }
-  return returnValue;
+  if (Connected)
+  {
+    digitalWrite(pLossOfSignal, false);
+  }
+  else 
+  {
+    if (now - lastLOSChange > 1000) {
+        digitalWrite(pLossOfSignal, !digitalRead(pLossOfSignal));
+        lastLOSChange = now;
+    }
+  }
+  return;
 }
 
 //define the structure of a VesseData packet
@@ -145,9 +165,6 @@ byte getNavballMode() {
 //define what to do with the vessel data here, e.g. turn on LED's, display text on the LCD
 void define_vessel_data_display() {
   
-  //Fuel LED bar charts - NEED TO USE A SHIFT REGISTER to drive the LED bar charts!
-  // to be implemented
-
   //LCD Display Modes
   // 0 xyz TakeOff Mode:     Suface Velocity / Acceleration (G)
   // 1 Xyz Orbit Mode:       Apoapsis + Time to Apoapsis / Periapsis + Time to Periapsis
@@ -157,183 +174,184 @@ void define_vessel_data_display() {
   // 5 XyZ Flying Mode:      Altitude / Mach number
   // 6 xYZ Landing Mode:     Radar Altitude / Vertical Velocity
   // 7 XYZ Extra Mode:       not implemented (yet)
-
-  if(digitalRead(pLCDx) && digitalRead(pLCDy) && digitalRead(pLCDz)){
-    //MODE 0 : TakeOff Mode
-    //Vsurf
-    clearLCD();
-    char bufferVsurf[17];
-    String strVsurf = "Vsurf: ";
-    strVsurf += String(VData.Vsurf, 0);
-    strVsurf += " m/s";
-    strVsurf.toCharArray(bufferVsurf,17);
-    writeLCD(bufferVsurf);
-    //Acceleration (G)
-    jumpToLineTwo();
-    char bufferGee[17];
-    String strGee = "Accel: ";
-    strGee += String(VData.G, 0);
-    strGee += " G";
-    strGee.toCharArray(bufferGee,17);
-    writeLCD(bufferGee);
-  }
+  if (HAVE_LCD) {
+    if(digitalRead(pLCDx) && digitalRead(pLCDy) && digitalRead(pLCDz)){
+      //MODE 0 : TakeOff Mode
+      //Vsurf
+      clearLCD();
+      char bufferVsurf[17];
+      String strVsurf = "Vsurf: ";
+      strVsurf += String(VData.Vsurf, 0);
+      strVsurf += " m/s";
+      strVsurf.toCharArray(bufferVsurf,17);
+      writeLCD(bufferVsurf);
+      //Acceleration (G)
+      jumpToLineTwo();
+      char bufferGee[17];
+      String strGee = "Accel: ";
+      strGee += String(VData.G, 0);
+      strGee += " G";
+      strGee.toCharArray(bufferGee,17);
+      writeLCD(bufferGee);
+    }
+    
+    if(!digitalRead(pLCDx) && digitalRead(pLCDy) && digitalRead(pLCDz)){
+      //MODE 1: Orbit Mode
+      clearLCD();
+      
+      //Apoapsis
+      char bufferAP[17];
+      String strApo = "AP: ";
+      if (VData.AP < 10000 && VData.AP > -10000) {
+        strApo += String(VData.AP,0);
+        strApo += "m ";
+      } else if ((VData.AP >= 10000 && VData.AP < 10000000) || (VData.AP <= -10000 && VData.AP > -10000000)) {
+        strApo += String((VData.AP / 1000),0);
+        strApo += "km ";
+      } else if ((VData.AP >= 10000000 && VData.AP < 10000000000) || (VData.AP <= -10000000 && VData.AP > -10000000000)) {
+        strApo += String((VData.AP / 1000000),0);
+        strApo += "Mm ";
+      } else {
+        strApo += String((VData.AP / 1000000000),0);
+        strApo += "Gm ";
+      }
+      strApo += String(VData.TAp); //time to apoapsis
+      strApo += "s";
+      strApo.toCharArray(bufferAP,17);
+      writeLCD(bufferAP);
+      
+      //Periapsis
+      char bufferPE[17];
+      String strPeri = "PE: ";
+      if (VData.PE < 10000 && VData.PE > -10000) {
+        strPeri += String(VData.PE,0);
+        strPeri += "m ";
+      } else if ((VData.PE >= 10000 && VData.PE < 10000000) || (VData.PE <= -10000 && VData.PE > -10000000)) {
+        strPeri += String((VData.PE / 1000.0),0);
+        strPeri += "km ";
+      } else if ((VData.PE >= 10000000 && VData.PE < 10000000000) || (VData.PE <= -10000000 && VData.PE > -10000000000)) {
+        strPeri += String((VData.PE / 1000000.0),0);
+        strPeri += "Mm ";
+      } else {
+        strPeri += String((VData.PE / 1000000000.0),0);
+        strPeri += "Gm ";
+      }
+      strPeri += String(VData.TPe); //time to periapsis
+      strPeri += "s";
+      strPeri.toCharArray(bufferPE,17);
+      jumpToLineTwo();
+      writeLCD(bufferPE);
+    }
   
-  if(!digitalRead(pLCDx) && digitalRead(pLCDy) && digitalRead(pLCDz)){
-    //MODE 1: Orbit Mode
-    clearLCD();
-    
-    //Apoapsis
-    char bufferAP[17];
-    String strApo = "AP: ";
-    if (VData.AP < 10000 && VData.AP > -10000) {
-      strApo += String(VData.AP,0);
-      strApo += "m ";
-    } else if ((VData.AP >= 10000 && VData.AP < 10000000) || (VData.AP <= -10000 && VData.AP > -10000000)) {
-      strApo += String((VData.AP / 1000),0);
-      strApo += "km ";
-    } else if ((VData.AP >= 10000000 && VData.AP < 10000000000) || (VData.AP <= -10000000 && VData.AP > -10000000000)) {
-      strApo += String((VData.AP / 1000000),0);
-      strApo += "Mm ";
-    } else {
-      strApo += String((VData.AP / 1000000000),0);
-      strApo += "Gm ";
+    if(digitalRead(pLCDx) && !digitalRead(pLCDy) && digitalRead(pLCDz)){
+      //MODE 2: Maneuver Mode
+      //MNTime
+      clearLCD();
+      char t[10];
+      dtostrf(VData.MNTime,8,0,t);
+      writeLCD("Tnode: ");
+      writeLCD(t);
+      writeLCD("s");
+      //MNDeltaV
+      jumpToLineTwo();
+      char bufferMNDeltaV[17];
+      String strMNDeltaV = "dV: ";
+      strMNDeltaV += String(VData.MNDeltaV, 0);
+      strMNDeltaV += " m/s";
+      strMNDeltaV.toCharArray(bufferMNDeltaV,17);
+      writeLCD(bufferMNDeltaV);
     }
-    strApo += String(VData.TAp); //time to apoapsis
-    strApo += "s";
-    strApo.toCharArray(bufferAP,17);
-    writeLCD(bufferAP);
-    
-    //Periapsis
-    char bufferPE[17];
-    String strPeri = "PE: ";
-    if (VData.PE < 10000 && VData.PE > -10000) {
-      strPeri += String(VData.PE,0);
-      strPeri += "m ";
-    } else if ((VData.PE >= 10000 && VData.PE < 10000000) || (VData.PE <= -10000 && VData.PE > -10000000)) {
-      strPeri += String((VData.PE / 1000.0),0);
-      strPeri += "km ";
-    } else if ((VData.PE >= 10000000 && VData.PE < 10000000000) || (VData.PE <= -10000000 && VData.PE > -10000000000)) {
-      strPeri += String((VData.PE / 1000000.0),0);
-      strPeri += "Mm ";
-    } else {
-      strPeri += String((VData.PE / 1000000000.0),0);
-      strPeri += "Gm ";
+  
+    if(!digitalRead(pLCDx) && !digitalRead(pLCDy) && digitalRead(pLCDz)){
+      //MODE 3: Rendezvouz Mode
+      //Target Distance
+      clearLCD();
+      char bufferTargetDist[17];
+      String strTargetDist = "TDist: ";
+      strTargetDist += String(VData.TargetDist, 0);
+      strTargetDist += " m";
+      strTargetDist.toCharArray(bufferTargetDist,17);
+      writeLCD(bufferTargetDist);
+      //Target Velocity
+      jumpToLineTwo();
+      char bufferTargetV[17];
+      String strTargetV = "TVel: ";
+      strTargetV += String(VData.TargetV, 0);
+      strTargetV += " m/s";
+      strTargetV.toCharArray(bufferTargetV,17);
+      writeLCD(bufferTargetV);
     }
-    strPeri += String(VData.TPe); //time to periapsis
-    strPeri += "s";
-    strPeri.toCharArray(bufferPE,17);
-    jumpToLineTwo();
-    writeLCD(bufferPE);
+  
+    if(digitalRead(pLCDx) && digitalRead(pLCDy) && !digitalRead(pLCDz)){
+      //MODE 4: Re-Entry Mode
+      //MaxOverHeat
+      clearLCD();
+      char t[3];
+      dtostrf(VData.MaxOverHeat,3,0,t);
+      writeLCD("Heat: ");
+      writeLCD(t);
+      writeLCD("%");
+      //Acceleration (G)
+      jumpToLineTwo();
+      char bufferGee[17];
+      String strGee = "Decel: ";
+      strGee += String(VData.G, 0);
+      strGee += " G";
+      strGee.toCharArray(bufferGee,17);
+      writeLCD(bufferGee);
+    }
+  
+    if(!digitalRead(pLCDx) && digitalRead(pLCDy) && !digitalRead(pLCDz)){
+      //MODE 5: Flying Mode
+      //Alt
+      clearLCD();
+      char bufferAtl[17];
+      String strAlt = "Alt:  ";
+      strAlt += String(VData.Alt, 0);
+      strAlt += " m/s";
+      strAlt.toCharArray(bufferAtl,17);
+      writeLCD(bufferAtl);
+      //Mach Number
+      jumpToLineTwo();
+      char bufferMachNumber[17];
+      String strMach = "Mach:";
+      strMach += String(VData.G, 0);
+      strMach.toCharArray(bufferMachNumber,17);
+      writeLCD(bufferMachNumber);
+    }
+  
+    if(digitalRead(pLCDx) && !digitalRead(pLCDy) && !digitalRead(pLCDz)){
+      //MODE 6: Landing Mode
+      //RAlt
+      clearLCD();
+      char bufferRAtl[17];
+      String strRAlt = "RAlt: ";
+      strRAlt += String(VData.RAlt, 0);
+      strRAlt += " m/s";
+      strRAlt.toCharArray(bufferRAtl,17);
+      writeLCD(bufferRAtl);
+      //Vertical Velocity
+      jumpToLineTwo();
+      char bufferVVI[17];
+      String strVVI = "VVI:  ";
+      strVVI += String(VData.VVI, 0);
+      strVVI += " m/s";
+      strVVI.toCharArray(bufferVVI,17);
+      writeLCD(bufferVVI);
+    }
+  
+    if(!digitalRead(pLCDx) && !digitalRead(pLCDy) && !digitalRead(pLCDz)){
+      //MODE 7: Extra Mode
+      clearLCD();
+      writeLCD("KerbalController");
+    }
   }
-
-  if(digitalRead(pLCDx) && !digitalRead(pLCDy) && digitalRead(pLCDz)){
-    //MODE 2: Maneuver Mode
-    //MNTime
-    clearLCD();
-    char t[10];
-    dtostrf(VData.MNTime,8,0,t);
-    writeLCD("Tnode: ");
-    writeLCD(t);
-    writeLCD("s");
-    //MNDeltaV
-    jumpToLineTwo();
-    char bufferMNDeltaV[17];
-    String strMNDeltaV = "dV: ";
-    strMNDeltaV += String(VData.MNDeltaV, 0);
-    strMNDeltaV += " m/s";
-    strMNDeltaV.toCharArray(bufferMNDeltaV,17);
-    writeLCD(bufferMNDeltaV);
-  }
-
-  if(!digitalRead(pLCDx) && !digitalRead(pLCDy) && digitalRead(pLCDz)){
-    //MODE 3: Rendezvouz Mode
-    //Target Distance
-    clearLCD();
-    char bufferTargetDist[17];
-    String strTargetDist = "TDist: ";
-    strTargetDist += String(VData.TargetDist, 0);
-    strTargetDist += " m";
-    strTargetDist.toCharArray(bufferTargetDist,17);
-    writeLCD(bufferTargetDist);
-    //Target Velocity
-    jumpToLineTwo();
-    char bufferTargetV[17];
-    String strTargetV = "TVel: ";
-    strTargetV += String(VData.TargetV, 0);
-    strTargetV += " m/s";
-    strTargetV.toCharArray(bufferTargetV,17);
-    writeLCD(bufferTargetV);
-  }
-
-  if(digitalRead(pLCDx) && digitalRead(pLCDy) && !digitalRead(pLCDz)){
-    //MODE 4: Re-Entry Mode
-    //MaxOverHeat
-    clearLCD();
-    char t[3];
-    dtostrf(VData.MaxOverHeat,3,0,t);
-    writeLCD("Heat: ");
-    writeLCD(t);
-    writeLCD("%");
-    //Acceleration (G)
-    jumpToLineTwo();
-    char bufferGee[17];
-    String strGee = "Decel: ";
-    strGee += String(VData.G, 0);
-    strGee += " G";
-    strGee.toCharArray(bufferGee,17);
-    writeLCD(bufferGee);
-  }
-
-  if(!digitalRead(pLCDx) && digitalRead(pLCDy) && !digitalRead(pLCDz)){
-    //MODE 5: Flying Mode
-    //Alt
-    clearLCD();
-    char bufferAtl[17];
-    String strAlt = "Alt:  ";
-    strAlt += String(VData.Alt, 0);
-    strAlt += " m/s";
-    strAlt.toCharArray(bufferAtl,17);
-    writeLCD(bufferAtl);
-    //Mach Number
-    jumpToLineTwo();
-    char bufferMachNumber[17];
-    String strMach = "Mach:";
-    strMach += String(VData.G, 0);
-    strMach.toCharArray(bufferMachNumber,17);
-    writeLCD(bufferMachNumber);
-  }
-
-  if(digitalRead(pLCDx) && !digitalRead(pLCDy) && !digitalRead(pLCDz)){
-    //MODE 6: Landing Mode
-    //RAlt
-    clearLCD();
-    char bufferRAtl[17];
-    String strRAlt = "RAlt: ";
-    strRAlt += String(VData.RAlt, 0);
-    strRAlt += " m/s";
-    strRAlt.toCharArray(bufferRAtl,17);
-    writeLCD(bufferRAtl);
-    //Vertical Velocity
-    jumpToLineTwo();
-    char bufferVVI[17];
-    String strVVI = "VVI:  ";
-    strVVI += String(VData.VVI, 0);
-    strVVI += " m/s";
-    strVVI.toCharArray(bufferVVI,17);
-    writeLCD(bufferVVI);
-  }
-
-  if(!digitalRead(pLCDx) && !digitalRead(pLCDy) && !digitalRead(pLCDz)){
-    //MODE 7: Extra Mode
-    clearLCD();
-    writeLCD("KerbalController");
-  }
-
   ackseq = VData.ackseq;
   //get in-game status for updating the LED statuses on the controller  
   lights_on = ControlStatus(AGLight);
   gears_on = ControlStatus(AGGears);
   brakes_on = ControlStatus(AGBrakes);
+  abort_on = ControlStatus(AGAbort);
   action1_on = ControlStatus(AGCustom01);
   action2_on = ControlStatus(AGCustom02);
   action3_on = ControlStatus(AGCustom03);
@@ -362,52 +380,55 @@ void define_vessel_data_display() {
   digitalWrite(pSOLARLED, solar_on);
   digitalWrite(pCHUTESLED, chutes_on);
   digitalWrite(pSTAGELED, stage_led_on);
+  digitalWrite(pABORTLED, abort_led_on);
+  digitalWrite(pendingPacketLEDPin, pendingPacket ? HIGH : LOW);
 
+  if (HAVE_BARS) 
+  {
   //Fuel Gauges
-  vSF = 100 * VData.SolidFuel / VData.SolidFuelTot; //percentage of solid fuel remaining
-  vLF = 100 * VData.LiquidFuelS / VData.LiquidFuelTotS; //percentage of liquid fuel remaining in current stage
-  vOX = 100 * VData.OxidizerS / VData.OxidizerTotS; //percentage of oxidized remaining in current stage
-  vEL = 100 * VData.ECharge / VData.EChargeTot; //percentage of electric charge remaining
-  vMP = 100 * VData.MonoProp / VData.MonoPropTot; //percentage of monopropellant remaining
-
-  //scale down to 0-9 for binary calculations
-  SF = constrain(map(vSF, 100, 0, 0, 9), 0, 9);
-  LF = constrain(map(vLF, 100, 0, 0, 9), 0, 9);
-  OX = constrain(map(vOX, 100, 0, 0, 9), 0, 9);
-  EL = constrain(map(vEL, 0, 100, 0, 9), 0, 9); //EL bar soldered wrong way around
-  MP = constrain(map(vMP, 100, 0, 0, 9), 0, 9);
-
-  //calculate the power of 2. Now each value in binary is all zeroes an a single 1. we can use that to light one LED in each LED bar (dot mode)
-  int powOX = 0.1+pow(2,OX);
-  int powEL = 0.1+pow(2,EL);
-  int powMP = 0.1+pow(2,MP);
-  int powSF = 0.1+pow(2,SF);
-  int powLF = 0.1+pow(2,LF);
-
-  //map the 8-bit 595 shift registers to the 10-bit LED bars, specific to the way I wired them
-  inputBytes[0] = powSF >> 6;
-  inputBytes[1] = (powSF << 2) | (powLF >> 8);
-  inputBytes[2] = powLF;
-  inputBytes[3] = powEL >> 3;
-  bitWrite(inputBytes[3], 0, bitRead(powEL, 4)); //fix the skipped 595 pin
-  inputBytes[4] = (powEL << 4) | (powMP >> 6);
-  inputBytes[5] = (powMP << 2) | (powOX >> 8);
-  inputBytes[6] = powOX;
-
+    vSF = 100 * VData.SolidFuel / VData.SolidFuelTot; //percentage of solid fuel remaining
+    vLF = 100 * VData.LiquidFuelS / VData.LiquidFuelTotS; //percentage of liquid fuel remaining in current stage
+    vOX = 100 * VData.OxidizerS / VData.OxidizerTotS; //percentage of oxidized remaining in current stage
+    vEL = 100 * VData.ECharge / VData.EChargeTot; //percentage of electric charge remaining
+    vMP = 100 * VData.MonoProp / VData.MonoPropTot; //percentage of monopropellant remaining
   
-  //prepare the shift register
-  digitalWrite(dataPin, LOW);
-  digitalWrite(clockPin, LOW);
-  digitalWrite(latchPin, LOW);
+    //scale down to 0-9 for binary calculations
+    SF = constrain(map(vSF, 100, 0, 0, 9), 0, 9);
+    LF = constrain(map(vLF, 100, 0, 0, 9), 0, 9);
+    OX = constrain(map(vOX, 100, 0, 0, 9), 0, 9);
+    EL = constrain(map(vEL, 0, 100, 0, 9), 0, 9); //EL bar soldered wrong way around
+    MP = constrain(map(vMP, 100, 0, 0, 9), 0, 9);
+  
+    //calculate the power of 2. Now each value in binary is all zeroes an a single 1. we can use that to light one LED in each LED bar (dot mode)
+    int powOX = 0.1+pow(2,OX);
+    int powEL = 0.1+pow(2,EL);
+    int powMP = 0.1+pow(2,MP);
+    int powSF = 0.1+pow(2,SF);
+    int powLF = 0.1+pow(2,LF);
 
-  //loop through the input bytes
-  for (int j=0; j<=6; j++){
-    byte inputByte = inputBytes[j];
-    Serial.println(inputByte);
-    shiftOut(dataPin, clockPin, MSBFIRST, inputByte);
-  }
+    //map the 8-bit 595 shift registers to the 10-bit LED bars, specific to the way I wired them
+    inputBytes[0] = powSF >> 6;
+    inputBytes[1] = (powSF << 2) | (powLF >> 8);
+    inputBytes[2] = powLF;
+    inputBytes[3] = powEL >> 3;
+    bitWrite(inputBytes[3], 0, bitRead(powEL, 4)); //fix the skipped 595 pin
+    inputBytes[4] = (powEL << 4) | (powMP >> 6);
+    inputBytes[5] = (powMP << 2) | (powOX >> 8);
+    inputBytes[6] = powOX;
   
-  //latch the values in when done shifting
-  digitalWrite(latchPin, HIGH);  
+    //prepare the shift register
+    digitalWrite(dataPin, LOW);
+    digitalWrite(clockPin, LOW);
+    digitalWrite(latchPin, LOW);
   
+    //loop through the input bytes
+    for (int j=0; j<=6; j++){
+      byte inputByte = inputBytes[j];
+      //Serial.println(inputByte);
+      shiftOut(dataPin, clockPin, MSBFIRST, inputByte);
+    }
+    
+    //latch the values in when done shifting
+    digitalWrite(latchPin, HIGH);  
+  } 
 }

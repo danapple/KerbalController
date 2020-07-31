@@ -2,7 +2,7 @@
 
 //check if it is time to send a control packet
 void send_control_packet() {
-  now = millis();
+  unsigned long now = millis();
   controlTime = now - controlTimeOld;
   if (controlTime > CONTROLREFRESH) {
     controlTimeOld = now;
@@ -11,6 +11,8 @@ void send_control_packet() {
 }
 
 unsigned long sentRequest = 0;
+unsigned long stageLedTimeOld = 0;
+unsigned long abortLedTimeOld = 0;
 
 //define the structure of a control packet
 struct ControlPacket {
@@ -58,32 +60,10 @@ ControlPacket CPacket;
 #define ACTION3   3
 #define ACTION4   4
 
-bool sendCommand = false;
+boolean sendCommand = false;
+boolean fixStates = false;
+boolean lastStateFix = 0;
 //Main controls uses enum above, e.g. MainControls(SAS,true);
-void MainControls(byte n, boolean s) {
-  sendCommand = true;
-    if (s)
-      CPacket.MainControls |= (1 << n);       // forces nth bit of x to be 1.  all other bits left alone.
-    else
-      CPacket.MainControls &= ~(1 << n);      // forces nth bit of x to be 0.  all other bits left alone.
-}
-
-void ClearMainControls() 
-{
-  ClearMainControls(STAGE);
-}
-
-void ClearMainControls(int n) {
-  CPacket.MainControls &= ~(1 << n);
-}
-
-//Control groups (action groups) uses an integer to refer to a custom action group, e.g. ControlGroup(5,true);
-void ControlGroups(byte n, boolean s) {
-  if (s)
-    CPacket.ControlGroup |= (1 << n);       // forces nth bit of x to be 1.  all other bits left alone.
-  else
-    CPacket.ControlGroup &= ~(1 << n);      // forces nth bit of x to be 0.  all other bits left alone.
-}
 
 //Enumeration of SAS Modes
 #define SMOFF           0
@@ -120,11 +100,42 @@ int PIN_STATE[60];
 
 void initPinStates()
 {
-  for (int pin = 0; pin < 60; pin++) {
+  for (int pin = 2; pin < 60; pin++) {
     PIN_STATE[pin] = readPinState(pin);
   }
 }
 
+void recordPin(int pin, boolean newPinState) 
+{
+   PIN_STATE[pin] = newPinState;
+}
+
+void MainControls(byte n, boolean s) {
+    if (s)
+      CPacket.MainControls |= (1 << n);       // forces nth bit of x to be 1.  all other bits left alone.
+    else
+      CPacket.MainControls &= ~(1 << n);      // forces nth bit of x to be 0.  all other bits left alone.
+    sendCommand = true;
+}
+
+void ClearMainControls() 
+{
+  ClearMainControls(STAGE);
+}
+
+void ClearMainControls(int n) {
+  CPacket.MainControls &= ~(1 << n);
+}
+
+//Control groups (action groups) uses an integer to refer to a custom action group, e.g. ControlGroup(5,true);
+void ControlGroups(byte n, boolean s) {
+
+  if (s)
+    CPacket.ControlGroup |= (1 << n);       // forces nth bit of x to be 1.  all other bits left alone.
+  else
+    CPacket.ControlGroup &= ~(1 << n);      // forces nth bit of x to be 0.  all other bits left alone.
+  sendCommand = true;
+}
 
 // For buttons that toggle a state
 boolean positiveEdge(int readPin) 
@@ -145,9 +156,18 @@ boolean readPinState(int readPin) {
   return !digitalRead(readPin);
 }
 
-void recordPin(int pin, boolean newPinState) 
+
+boolean buttonPressLocal(int readPin, boolean state) 
 {
-   PIN_STATE[pin] = newPinState;
+  boolean pEdge = positiveEdge(readPin);
+  recordPin(readPin, readPinState(readPin));
+  if (pEdge)
+  {
+    return !state;
+  }
+  else {
+    return state;
+  }
 }
 
 // For buttons that toggle a state
@@ -171,9 +191,10 @@ void buttonPress(int readPin, int writePin)
   }
 }
 
-// For switches that should enforce a state
-boolean matchMainState(int readPin, int writePin, boolean state) 
+// For switches that induce a state upon being thrown
+void triggerMainState(int readPin, int writePin, boolean state, boolean fix) 
 {
+  boolean pinState = readPinState(readPin);
   if (!state && positiveEdge(readPin)) 
   {
     recordPin(readPin, true);
@@ -184,8 +205,13 @@ boolean matchMainState(int readPin, int writePin, boolean state)
     recordPin(readPin, false);
     MainControls(writePin, false);
   }
+  else if (fix && fixStates && state != pinState)
+  {
+    recordPin(readPin, false);
+    MainControls(writePin, pinState);
+  }
   else {
-    recordPin(readPin, readPinState(readPin));
+    recordPin(readPin, pinState);
   }
 }
 
@@ -198,8 +224,40 @@ boolean matchControlState(int readPin, int writePin, boolean state)
   }
 }
 
+int readAnalog(int pin, int negStart, int negDead, int posDead, int posLimit)
+{
+  int readValue = analogRead(pin);
+  int returnValue = 0;
+  if (readValue >= 530) 
+  {
+    returnValue = constrain(map(readValue, negStart, negDead, -1000, 0), -1000, 0);
+  }
+  else if(readValue <= 470)
+  {
+    returnValue = constrain(map(readValue, posDead, posLimit, 0, 1000), 0, 1000);
+  }
+  return returnValue;
+}
+
+int readXY(int pin)
+{
+  return readAnalog(pin, 1023, 530, 470, 0);
+}
+
+int readZ(int pin)
+{
+  return readAnalog(pin, 0, 40, 60, 500);
+}
+
 void define_control_packet() {
-  if (Connected) {
+  unsigned long now = millis();
+  if (Connected)
+  {
+    fixStates = now - lastStateFix > 500;
+    if (fixStates) 
+    {
+      lastStateFix = now;
+    }
     if (CPacket.seq == ackseq)
     {
       // clear non-stateful actions once the host acknowledges the command
@@ -207,18 +265,12 @@ void define_control_packet() {
     }
     sendCommand = false;
 
-    if (GEAR_IS_SWITCH) 
-    {
-      matchMainState(pGEARS, GEARS, gears_on);
-    }
-    else
-    {
-      buttonPress(pGEARS, GEARS, gears_on);
-    }
-    buttonPress(pRCS, RCS, rcs_on);
+    triggerMainState(pGEARS, GEARS, gears_on, false);
     buttonPress(pSAS, SAS, sas_on);
     buttonPress(pLIGHTS, LIGHTS, lights_on);
     
+    triggerMainState(pRCS, RCS, rcs_on, true);
+
     matchControlState(pLADDER, LADDER, ladder_on);
     matchControlState(pSOLAR, SOLAR, solar_on);
     matchControlState(pCHUTES, CHUTES, chutes_on);
@@ -227,15 +279,13 @@ void define_control_packet() {
     matchControlState(pACTION2, ACTION2, action2_on);
     matchControlState(pACTION3, ACTION3, action3_on);
     matchControlState(pACTION4, ACTION4, action4_on);
-
-    buttonPress(pABORT, ABORT);
-    
+ 
     boolean stageArmed = readPinState(pARM);
     if (stageArmed) 
     {
       buttonPress(pSTAGE, STAGE);
-      now = millis();
-      stageLedTime = now - stageLedTimeOld;
+      
+      int stageLedTime = now - stageLedTimeOld;
       if (stageLedTime > stageLedBlinkTime) {
         stageLedTimeOld = now;
         stage_led_on = !stage_led_on;
@@ -247,66 +297,65 @@ void define_control_packet() {
       stage_led_on = false;
     }
 
+    boolean abortArmed = readPinState(pABORTARM);
+
+    if (abortArmed) 
+    {
+      if (abort_on)
+      {
+        abort_led_on = true;
+      }
+      else
+      {
+        buttonPress(pABORT, ABORT);
+        
+        int abortLedTime = now - abortLedTimeOld;
+        if (abortLedTime > abortLedBlinkTime) {
+          abortLedTimeOld = now;
+          abort_led_on = !abort_led_on;
+        }
+      }
+    }
+    else if (negativeEdge(pABORTARM))
+    {
+      abortLedTimeOld = 0;
+      abort_led_on = false;
+      MainControls(ABORT, false);
+    }
+    recordPin(pABORTARM, abortArmed);
+
     if (HAVE_THROTTLE) 
     {
       CPacket.Throttle = constrain(map(analogRead(pTHROTTLE),30,990,0,1023),0,1000);
     }
-
     if (HAVE_JOYSTICKS) 
     {
+      rocket_mode = buttonPressLocal(pRB, rocket_mode);
       //rotation joystick button toggles flight control modes
-      if(!digitalRead(pRB) && !rb_prev){rb_on = !rb_on; rb_prev = true;}
-      if(digitalRead(pRB) && rb_prev){rb_prev = false;}
+      //if(!digitalRead(pRB) && !rb_prev){rb_on = !rb_on; rb_prev = true;}
+      //if(digitalRead(pRB) && rb_prev){rb_prev = false;}
       
-      if(rb_on){
+      if(rocket_mode){
         //rocket mode
-        if(analogRead(pRX) >= 530){CPacket.Yaw = constrain(map(analogRead(pRX),1023,530,-1000,0),-1000,0);}
-        else if(analogRead(pRX) <= 470){CPacket.Yaw = constrain(map(analogRead(pRX),470,0,0,1000),0,1000);}
-        else {CPacket.Yaw = 0;}
-        if(analogRead(pRY) >= 530){CPacket.Pitch = constrain(map(analogRead(pRY),530,1023,0,1000),0,1000);}
-        else if(analogRead(pRY) <= 470){CPacket.Pitch = constrain(map(analogRead(pRY),0,470,-1000,0),-1000,0);}
-        else {CPacket.Pitch = 0;}
-        if(analogRead(pRZ) <= 40){CPacket.Roll = constrain(map(analogRead(pRZ),0,40,-1000,0),-1000,0);}
-        else if(analogRead(pRZ) >= 60){CPacket.Roll = constrain(map(analogRead(pRZ),60,500,0,1000),0,1000);}
-        else {CPacket.Roll = 0;}
-  
-        if(analogRead(pTX) >= 530){CPacket.TX = constrain(map(analogRead(pTX),1023,530,0,1000),0,1000);}
-        else if(analogRead(pTX) <= 470){CPacket.TX = constrain(map(analogRead(pTX),470,0,-1000,0),-1000,0);}
-        else {CPacket.TX = 0;}
-        if(analogRead(pTY) >= 530){CPacket.TY = constrain(map(analogRead(pTY),1023,530,-1000,0),-1000,0);}
-        else if(analogRead(pTY) <= 470){CPacket.TY = constrain(map(analogRead(pTY),470,0,0,1000),0,1000);}
-        else {CPacket.TY = 0;}
-        if(analogRead(pTZ) <= 60){CPacket.TZ = constrain(map(analogRead(pTZ),0,60,-1000,0),-1000,0);}
-        else if(analogRead(pTZ) >= 90){CPacket.TZ = constrain(map(analogRead(pTZ),90,500,0,1000),0,1000);}
-        else {CPacket.TZ = 0;}
+        CPacket.Yaw = readXY(pRX);
+        CPacket.Pitch = readXY(pRY);
+        CPacket.Roll = readZ(pRZ);
+
+        CPacket.TX = readXY(pTX);
+        CPacket.TX = readXY(pTY);
+        CPacket.TZ = readZ(pTZ);
       }
       else {
         //airplane mode
-        if(analogRead(pRX) >= 530){CPacket.Roll = constrain(map(analogRead(pRX),1023,530,-1000,0),-1000,0);}
-        else if(analogRead(pRX) <= 470){CPacket.Roll = constrain(map(analogRead(pRX),470,0,0,1000),0,1000);}
-        else {CPacket.Yaw = 0;}
-        if(analogRead(pRY) >= 530){CPacket.Pitch = constrain(map(analogRead(pRY),530,1023,0,1000),0,1000);}
-        else if(analogRead(pRY) <= 470){CPacket.Pitch = constrain(map(analogRead(pRY),0,470,-1000,0),-1000,0);}
-        else {CPacket.Pitch = 0;}
-        if(analogRead(pTX) >= 530){CPacket.Yaw = constrain(map(analogRead(pTX),1023,530,-1000,0),-1000,0);}
-        else if(analogRead(pTX) <= 470){CPacket.Yaw = constrain(map(analogRead(pTX),470,0,0,1000),0,1000);}
-        else {CPacket.Yaw = 0;}
+        CPacket.Roll = readXY(pRX);
+        CPacket.Pitch = readXY(pRY);
+        CPacket.Yaw = readXY(pTX);
         CPacket.TX = 0;
         CPacket.TY = 0;
         CPacket.TZ = 0;
       }
     }
  
-
-    //    //translation joystick button toggles between modes?
-    //    if(!digitalRead(pTB) && !tb_prev){tb_on = !tb_on; tb_prev = true;}
-    //    if(digitalRead(pTB) && tb_prev){tb_prev = false;}
-    //    if(tb_on){
-    //      
-    //    }
-    //    else {
-    //      
-    //    }
     if (sendCommand) {
       sentRequest = 0;
       CPacket.seq = (CPacket.seq + 1) % 200;
@@ -314,15 +363,14 @@ void define_control_packet() {
 
     if (CPacket.seq != ackseq) 
     {
-      unsigned long now = millis();
       if (now - sentRequest > 200) {
-        digitalWrite(pendingPacketLEDPin,HIGH);
+        pendingPacket = true;
         KSPBoardSendData(details(CPacket)); 
         sentRequest = now;
       }
     }
     else {
-      digitalWrite(pendingPacketLEDPin,LOW);
+      pendingPacket = false;
     }
 
   }

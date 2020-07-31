@@ -22,12 +22,15 @@ const int dataPin = 11;     //DS - yellow
 const int clockPin = 12;    //SH_CP - blue
 const int pendingPacketLEDPin = 13;    // We have an unacknowledged command packet to send
 const int pMODE = 22;       //mode switch (used for debug mode)
+const int pLossOfSignal = 13; //;   // Console has no connection to game
 const int pLCDx = 27;       //toggle switch x (used for LCD display modes)
 const int pLCDy = 24;       //toggle switch y (used for LCD display modes)
 const int pLCDz = 29;       //toggle switch z (used for LCD display modes)
 const int pSAS = 26;        //SAS button
 const int pRCS = 31;        //RCS button
 const int pABORT = 28;      //Abort switch (safety switch, active high)
+const int pABORTARM = 14;
+const int pABORTLED = 15;
 const int pARM = 30;        //Arm switch (safety switch, active high)
 const int pSTAGE = 32;      //Stage button
 const int pSTAGELED = 33;   //Stage button LED
@@ -60,25 +63,33 @@ bool gears_on = false;
 bool brakes_on = false;
 bool chutes_on = false;
 bool stage_on = false;
+bool abort_on = false;
 bool action1_on = false;
 bool action2_on = false;
 bool action3_on = false;
 bool action4_on = false;
+bool action5_on = false;
+bool action6_on = false;
+bool action7_on = false;
+bool action8_on = false;
+bool action9_on = false;
+bool action10_on = false;
 bool rcs_on = false;
 bool sas_on = false;
 
 byte ackseq = 0;
+const byte HSPid = 77;
+const byte VDid = 1;
+const byte Cid = 101;
 
 //toggle button states
-bool tb_on = true;
-bool rb_on = true;
-
-//previous button state
-bool tb_prev = false;
-bool rb_prev = false;
+//bool tb_on = true;
+bool rocket_mode = true;
 
 //stage LED state
 bool stage_led_on = false;
+
+bool abort_led_on = false;
 
 //input value variables
 int throttle_value;
@@ -97,41 +108,36 @@ int vSF, vLF, vOX, vEL, vMP, SF, LF, OX, EL, MP;
 bool debug = false;
 
 //timing
-const int IDLETIMER = 20000;        //if no message received from KSP for more than 20s, go idle (default 2000)
+const int IDLETIMER = 1000;        
 const int CONTROLREFRESH = 10;      //send control packet every 10 ms (default 25)
 const int stageLedBlinkTime = 1000;  //blink staging LED when armed every 500 ms
+const int abortLedBlinkTime = 300;  //blink staging LED when armed every 500 ms
 
 //variables used in timing
-unsigned long deadtime, deadtimeOld, controlTime, controlTimeOld, stageLedTime, stageLedTimeOld;
-unsigned long now;
+unsigned long deadtime, deadtimeOld, controlTime, controlTimeOld = 0;
 
 //variables used in serial communication
 boolean Connected = false;
-byte id;
+boolean receivedData = false;
+boolean pendingPacket = false;
 
 void setup() {
-  
-  Serial.begin(38400);  //KSPSerialIO connection
-  mySerial.begin(9600); //LCD connection
-  delay(500);           //wait for LCD boot
-  
-  //write to LCD
-  clearLCD();
-  writeLCD("KerbalController");
-  jumpToLineTwo();
-  writeLCD("booting...");
-  delay(100);
 
+  initLCD();
+  
   //Initialize
   controlsInit();   //set all pin modes
-  testLEDS(50);     //blink every LED once to test (with a delay of 10 ms)
+  testLEDS(50);     //blink every LED once to test 
   InitTxPackets();  //initialize the serial communication
   initPinStates();
-
+  Serial.begin(115200, SERIAL_8O2);  //KSPSerialIO connection
 }
 
 void loop() {
-  
+  if (false && digitalRead(pPOWER))
+  {
+    return;
+  }
   //check mode
   if(!digitalRead(pMODE)){debug = true;} else {debug = false;}
 
@@ -141,8 +147,14 @@ void loop() {
   }
   else 
   {
-    get_vessel_data();
-    send_control_packet();
+    if (Serial) 
+    {
+      get_vessel_data();
+      if (Connected && receivedData)
+      {
+        send_control_packet();
+      }
+    }
   }
 }
 
@@ -229,13 +241,13 @@ void debug_mode() {
     if(action4_on){writeLCD("A");} else {writeLCD("a");}
     digitalWrite(pACTION4LED, action4_on);
     
-    if(!digitalRead(pTB) && !tb_prev){tb_on = !tb_on; tb_prev = true;}
-    if(digitalRead(pTB) && tb_prev){tb_prev = false;}
-    if(tb_on){writeLCD("T");} else {writeLCD("t");}
+    //if(!digitalRead(pTB) && !tb_prev){tb_on = !tb_on; tb_prev = true;}
+    //if(digitalRead(pTB) && tb_prev){tb_prev = false;}
+    //if(tb_on){writeLCD("T");} else {writeLCD("t");}
   
-    if(!digitalRead(pRB) && !rb_prev){rb_on = !rb_on; rb_prev = true;}
-    if(digitalRead(pRB) && rb_prev){rb_prev = false;}
-    if(rb_on){writeLCD("R");} else {writeLCD("r");}
+   // if(!digitalRead(pRB) && !rb_prev){rb_on = !rb_on; rb_prev = true;}
+    //if(digitalRead(pRB) && rb_prev){rb_prev = false;}
+    //if(rb_on){writeLCD("R");} else {writeLCD("r");}
   
     //analog inputs
     if(!digitalRead(pLCDx) && digitalRead(pLCDy) && digitalRead(pLCDz)){
